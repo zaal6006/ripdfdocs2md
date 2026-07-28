@@ -216,3 +216,13 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ripdfdocs2md project-specific
+# Real source documents and generated Markdown may contain sensitive/internal
+# hospital content — never commit them.
+/samples/*
+!/samples/.gitkeep
+/output/*
+!/output/.gitkeep
+*.pdf
+*.docx
