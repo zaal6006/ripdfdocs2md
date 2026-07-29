@@ -150,6 +150,31 @@ new `.docx` file.
   `R E P O R T A N D A N A LY S I S` — are detected and rejoined
   (`REPORT AND ANALYSIS`), using English and French dictionaries so it works for
   both languages without configuration.
+- **Borderless tables** (PDF) — some tables have no vector-drawn border at all
+  (plain whitespace-aligned columns). Since nothing about them is detectable
+  from PDF ruling lines, we score each paragraph-like block of extracted text
+  for "looks like a table" (consistent column count, numeric/short-token-heavy
+  content vs. prose) and convert confident matches to Markdown tables. Adapted
+  from the equivalent detector in the open-source
+  [pdfmd](https://github.com/M1ck4/pdfmd) project.
+- **Tables** (PDF) — pymupdf4llm's default ML layout engine sometimes
+  misclassifies a bordered, form-style table (e.g. a 2-column policy header with
+  checkboxes) as plain text, flattening it into one run-on paragraph, and even
+  when it does classify a region as a table, PyMuPDF's own cell-boundary
+  detection can be wrong for tables where the column divider is drawn as a
+  separate line per row (common in office-generated PDFs) rather than one
+  continuous line down the whole table. We rebuild these tables directly from
+  the underlying ruling rectangles and text positions (in an isolated
+  subprocess, so it never conflicts with the ML engine) and splice a correct
+  Markdown table over the original region. Tables in DOCX files are already
+  handled well by the underlying library and need no extra step.
+  - Known limitation: if a single table row is split exactly across a PDF page
+    boundary, it comes out as two separate small tables instead of one — no
+    data is lost or garbled, it's just presented as two tables rather than one.
+  - Known limitation: checkboxes (☐/☒) in some PDF forms aren't recoverable as
+    text at all — they may be vector-drawn shapes or interactive form-field
+    widgets rather than font characters, which is a separate problem from
+    tables.
 
 None of this requires any setup — it runs automatically as part of every
 conversion.
