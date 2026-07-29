@@ -175,6 +175,25 @@ new `.docx` file.
     text at all — they may be vector-drawn shapes or interactive form-field
     widgets rather than font characters, which is a separate problem from
     tables.
+  - Known limitation: `find_tables()` occasionally mistakes a decorative
+    cover-page graphic (background color blocks, shapes) for a table. We guard
+    against this by requiring the candidate to actually overlap real text
+    content the layout model recognized — if you ever see a cover page render
+    as a mostly-empty table again, that's this edge case resurfacing.
+- **Stylized headings/titles** (PDF) — pymupdf4llm's ML layout engine
+  occasionally misreads a document's display font as strikethrough formatting
+  (wrapping random word fragments in `~~like this~~`) or splits one heading
+  across multiple bold spans with a spurious space at the split (e.g.
+  `**THE DESJARDINS CEN** **TRE FOR ADV**` instead of one continuous
+  `**THE DESJARDINS CENTRE FOR ADV**...`). We strip spurious strikethrough
+  unconditionally (real strikethrough essentially never appears in these
+  documents), and for headings specifically, rebuild the whole heading from
+  word-frequency segmentation (the same technique used for letter-spaced
+  titles) rather than trying to guess which individual gaps are wrong.
+  - Known limitation: this heading fix is intentionally scoped to headings
+    only (short, and never legitimately mix in emails/numbers) — the same
+    kind of fragmentation occasionally leaks into a body-text sentence, and
+    those are left as-is rather than risk mangling unrelated text nearby.
 
 None of this requires any setup — it runs automatically as part of every
 conversion.

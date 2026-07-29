@@ -12,7 +12,9 @@ from pathlib import Path
 import pymupdf4llm
 
 from .borderless_tables import convert_borderless_tables
+from .heading_fragments import fix_heading_fragments
 from .pdf_tables import inject_tables_into_page_text
+from .strikethrough_fix import remove_spurious_strikethrough
 
 
 def convert(pdf_path: Path) -> str:
@@ -36,7 +38,13 @@ def convert_pages(pdf_path: Path) -> list[str]:
     ]
     # Ruling-based detection only finds tables with vector-drawn borders;
     # this catches whitespace-aligned tables that have none at all.
-    return [convert_borderless_tables(page) for page in pages]
+    pages = [convert_borderless_tables(page) for page in pages]
+    # pymupdf4llm's ML layout mode sometimes misdetects a font's rendering
+    # as strikethrough on stylized headings; see strikethrough_fix.py.
+    pages = [remove_spurious_strikethrough(page) for page in pages]
+    # ...and sometimes splits a heading across multiple bold spans with a
+    # spurious space at the split; see heading_fragments.py.
+    return [fix_heading_fragments(page) for page in pages]
 
 
 def _extract_tables(pdf_path: Path, pages_boxes: list) -> list:
