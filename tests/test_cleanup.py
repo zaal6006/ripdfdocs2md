@@ -18,6 +18,22 @@ def test_removes_repeating_header_and_footer():
         assert "Page" not in page
 
 
+def test_does_not_strip_image_links_that_look_like_repeating_boilerplate():
+    # Different page numbers baked into each filename normalize to the
+    # exact same fingerprint once digits are collapsed — must not be
+    # mistaken for a repeating header/footer and stripped.
+    pages = [
+        "![](assets/report.pdf-0001-01.png)\n\nSome text on page 1.",
+        "![](assets/report.pdf-0002-01.png)\n\nSome text on page 2.",
+        "![](assets/report.pdf-0003-01.png)\n\nSome text on page 3.",
+    ]
+    cleaned = remove_repeating_boilerplate(pages)
+
+    assert cleaned[0].startswith("![](assets/report.pdf-0001-01.png)")
+    assert cleaned[1].startswith("![](assets/report.pdf-0002-01.png)")
+    assert cleaned[2].startswith("![](assets/report.pdf-0003-01.png)")
+
+
 def test_leaves_single_page_untouched():
     pages = ["ACME Manual\n\nOnly one page.\n\nPage 1 of 1"]
     assert remove_repeating_boilerplate(pages) == pages

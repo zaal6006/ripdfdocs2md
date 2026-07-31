@@ -5,24 +5,27 @@ Examples:
     ripdfdocs2md samples/some_file.docx -o output
     ripdfdocs2md samples/                       # convert every PDF/DOCX in a folder
     ripdfdocs2md samples/ -o output
+    ripdfdocs2md samples/ --no-images           # skip extracting embedded images
 """
 
 import argparse
-import sys
+import re
 from pathlib import Path
 
+from .console import use_utf8_console
 from .pipeline import SUPPORTED_SUFFIXES, UnsupportedFileError, convert_file
 
 KNOWN_UNSUPPORTED_SUFFIXES = {".doc"}
+_WHITESPACE_RE = re.compile(r"\s+")
 
 
-def _use_utf8_console() -> None:
-    """Windows terminals often default to a legacy codepage (e.g. cp1252)
-    that can't encode many filenames (accents, Cyrillic, etc.). Force
-    UTF-8 output so an unusual filename can't crash the whole batch."""
-    for stream in (sys.stdout, sys.stderr):
-        if hasattr(stream, "reconfigure"):
-            stream.reconfigure(encoding="utf-8", errors="replace")
+def _assets_dir_name(stem: str) -> str:
+    """pymupdf4llm's image writer has a bug where it sanitizes spaces out
+    of the filename it constructs but not out of the directory it actually
+    creates, crashing with "no such file or directory" whenever the
+    assets folder name contains one — so this is space-free even when the
+    .md file's own name isn't."""
+    return _WHITESPACE_RE.sub("_", stem) + "_assets"
 
 
 def _collect_input_files(paths: list[Path]) -> tuple[list[Path], int]:
@@ -49,18 +52,24 @@ def _collect_input_files(paths: list[Path]) -> tuple[list[Path], int]:
 
 
 def _build_output_path(input_path: Path, output_dir: Path, used: set) -> Path:
-    """Pick an output .md path for input_path, disambiguating same-stem
-    files with different extensions (e.g. demo.pdf and demo.docx) so one
+    """Pick an output .md path for input_path, renaming with a numeric
+    suffix (report.md, report_1.md, report_2.md, ...) if the name is
+    already taken — e.g. two same-named files from different input
+    folders, or demo.pdf and demo.docx both wanting "demo.md" — so one
     never silently overwrites the other."""
     candidate = output_dir / (input_path.stem + ".md")
     if candidate not in used:
         return candidate
-    suffix = input_path.suffix.lstrip(".")
-    return output_dir / f"{input_path.stem}__{suffix}.md"
+    n = 1
+    while True:
+        candidate = output_dir / f"{input_path.stem}_{n}.md"
+        if candidate not in used:
+            return candidate
+        n += 1
 
 
 def main(argv: list[str] | None = None) -> int:
-    _use_utf8_console()
+    use_utf8_console()
 
     parser = argparse.ArgumentParser(
         prog="ripdfdocs2md",
@@ -79,6 +88,12 @@ def main(argv: list[str] | None = None) -> int:
         default=Path("output"),
         help="Folder to write .md files into (default: output/).",
     )
+    parser.add_argument(
+        "--no-images",
+        action="store_true",
+        help="Skip extracting embedded images (by default, images are saved into a "
+        "<name>_assets/ folder next to each output file and linked from the Markdown).",
+    )
     args = parser.parse_args(argv)
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -95,9 +110,11 @@ def main(argv: list[str] | None = None) -> int:
         out_path = _build_output_path(input_path, args.output_dir, used_output_paths)
         used_output_paths.add(out_path)
 
+        assets_dir = None if args.no_images else out_path.with_name(_assets_dir_name(out_path.stem))
+
         print(f"Converting {input_path.name} -> {out_path}")
         try:
-            markdown = convert_file(input_path)
+            markdown = convert_file(input_path, assets_dir)
         except UnsupportedFileError as exc:
             print(f"  SKIPPED: {exc}")
             skipped += 1

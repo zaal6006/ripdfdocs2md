@@ -22,6 +22,7 @@ dev = [
 
 [project.scripts]
 ripdfdocs2md = "ripdfdocs2md.cli:main"
+ripdfdocs2md-verify = "ripdfdocs2md.verify:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -17,6 +17,7 @@ from collections import Counter
 _DIGIT_RE = re.compile(r"\d+")
 _SENTENCE_END_RE = re.compile(r"[.!?:;]\s*$")
 _BLOCK_STARTER_RE = re.compile(r"^\s*(#{1,6}\s|[-*+]\s|\d+[.)]\s|\|)")
+_IMAGE_LINE_RE = re.compile(r"^!\[.*\]\(.*\)$")
 
 
 def _fingerprint(line: str) -> str:
@@ -53,7 +54,12 @@ def remove_repeating_boilerplate(
         non_blank_idx = [i for i, l in enumerate(lines) if l.strip()]
         zone_idx = set(non_blank_idx[:zone]) | set(non_blank_idx[-zone:])
         zones.append(zone_idx)
-        fingerprints_per_page.append({_fingerprint(lines[i]) for i in zone_idx})
+        # Image links (e.g. "![](report_assets/report.pdf-0003-00.png)") from
+        # different pages can look identical once digits are normalized —
+        # they must never be treated as a repeating header/footer.
+        fingerprints_per_page.append(
+            {_fingerprint(lines[i]) for i in zone_idx if not _IMAGE_LINE_RE.match(lines[i].strip())}
+        )
 
     counts = Counter()
     for fps in fingerprints_per_page:
@@ -67,7 +73,7 @@ def remove_repeating_boilerplate(
         cleaned = [
             line
             for i, line in enumerate(lines)
-            if not (i in zone_idx and _fingerprint(line) in removal)
+            if not (i in zone_idx and _fingerprint(line) in removal and not _IMAGE_LINE_RE.match(line.strip()))
         ]
         cleaned_pages.append("\n".join(cleaned))
 

@@ -17,14 +17,19 @@ class UnsupportedFileError(Exception):
     """Raised when a file can't be converted (wrong/unsupported format)."""
 
 
-def convert_file(input_path: Path) -> str:
-    """Convert a single PDF or DOCX file to a cleaned Markdown string."""
+def convert_file(input_path: Path, assets_dir: Path | None = None) -> str:
+    """Convert a single PDF or DOCX file to a cleaned Markdown string.
+
+    `assets_dir`, if given, is where embedded images get written (see
+    pdf_reader.convert_pages / docx_reader.convert for the exact naming
+    and linking scheme); pass None to skip image export entirely.
+    """
     suffix = input_path.suffix.lower()
 
     if suffix == ".pdf":
-        pages = pdf_reader.convert_pages(input_path)
+        pages = pdf_reader.convert_pages(input_path, assets_dir)
     elif suffix == ".docx":
-        pages = [docx_reader.convert(input_path)]
+        pages = [docx_reader.convert(input_path, assets_dir)]
     elif suffix == ".doc":
         raise UnsupportedFileError(
             "old binary .doc format is not supported (mammoth only reads "

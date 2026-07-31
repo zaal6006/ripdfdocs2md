@@ -62,7 +62,9 @@ This installs:
 | `wordninja-enhanced` | Fixes letter-spaced headings (English + French) |
 | `pytest`, `python-docx` (dev only) | Running tests |
 
-It also registers a `ripdfdocs2md` command inside `.venv\Scripts\`.
+It also registers two commands inside `.venv\Scripts\`: `ripdfdocs2md` (the
+converter) and `ripdfdocs2md-verify` (checks image links in already-converted
+files — see section 7).
 
 ### Verify the install
 
@@ -103,10 +105,11 @@ You can also mix specific files and folders in one command:
 .\.venv\Scripts\ripdfdocs2md.exe samples\a.pdf samples\some_folder -o output
 ```
 
-Each input file `name.ext` produces `output\name.md`. If two input files share the
-same name but have different extensions (e.g. `report.pdf` and `report.docx`), the
-second one is automatically renamed `report__docx.md` so neither output silently
-overwrites the other.
+Each input file `name.ext` produces `output\name.md`. If two input files would
+produce the same output name (e.g. `report.pdf` and `report.docx`, or two
+same-named files from different folders), the later one is automatically
+renamed with a numeric suffix — `report_1.md`, `report_2.md`, ... — so neither
+output silently overwrites the other.
 
 ### Reading the summary line
 
@@ -124,7 +127,80 @@ Done: 6 converted, 0 failed, 2 skipped (unsupported format).
 Exit code is `0` only when everything converted cleanly; `1` if anything failed or
 was skipped — useful if you ever call this from a script.
 
-## 7. Known limitation: old `.doc` files are not supported
+## 7. Image export
+
+Embedded images are extracted **by default** — no flags needed. Each output file
+gets its own `<name>_assets\` folder next to it, and images are linked into the
+Markdown as relative paths:
+
+```
+output\
+  report.md
+  report_assets\
+    report.pdf-0001-01.png
+    report.pdf-0003-00.png
+```
+
+```markdown
+![](report_assets/report.pdf-0001-01.png)
+```
+
+- **One folder per document** — even in a batch/bulk run, each file's images stay
+  in their own folder (never a shared common pool), so nothing collides or gets
+  mixed up between documents.
+- **Deduplication**: if the exact same image appears more than once (e.g. a
+  letterhead logo repeated on every page), only one copy is saved and every
+  reference points to it. Images are compared by exact byte content — if two
+  images are merely similar (not byte-identical, e.g. resized or recompressed),
+  both are kept as-is rather than guessing they're "close enough."
+- **Naming**: PDF images keep pymupdf4llm's own naming
+  (`<pdf-filename>-<page>-<index>.png`); DOCX images are named sequentially
+  (`image1.png`, `image2.png`, ...). Assets folder names are space-free
+  (`My Report.pdf` → `My_Report_assets\`) even when the .md file's own name isn't
+  — a workaround for a pymupdf4llm bug that crashes when its image-writing path
+  contains a space.
+- A document with no images produces no assets folder at all (nothing empty left
+  behind).
+
+**To skip image extraction** (faster, text-only output):
+
+```bash
+.\.venv\Scripts\ripdfdocs2md.exe samples -o output --no-images
+```
+
+### Checking image extraction worked
+
+A second command, `ripdfdocs2md-verify`, checks that every image link in a
+converted file actually resolves to a real, valid image file — no need to open a
+Markdown viewer just to confirm nothing's broken:
+
+```bash
+.\.venv\Scripts\ripdfdocs2md-verify.exe output
+```
+
+Run it against a single file or a whole folder (every `.md` inside gets checked).
+It reports each broken reference and exits non-zero if anything's wrong:
+
+```
+output\report.md: 3 image link(s) - OK
+output\other.md: 2 image link(s) - PROBLEMS
+  MISSING: other_assets/other.pdf-0002-00.png
+
+Some images are missing or invalid - see above.
+```
+
+"Invalid" means the file exists but its content doesn't match its extension
+(e.g. a truncated or corrupted `.png`) — checked via the file's magic bytes, not
+just whether it's non-empty. A `data:` URI (an image mammoth embedded inline as
+base64 — only happens if you run with `--no-images`) is counted but never
+flagged, since it isn't a file reference at all.
+
+To actually *see* the images (not just confirm the links resolve), the easiest
+way is a Markdown viewer with a live preview — e.g. in VS Code, open the `.md`
+file and press `Ctrl+Shift+V`. Since the file and its `_assets\` folder are
+siblings on disk, any standard viewer resolves the relative links correctly.
+
+## 8. Known limitation: old `.doc` files are not supported
 
 `.doc` (Word 97–2003 binary format) is a completely different file format from
 `.docx`, and the library we use to read Word documents (`mammoth`) only understands
@@ -139,7 +215,7 @@ Skipping some_file.doc: old .doc format not supported (see README).
 then **File → Save As → Word Document (.docx)**, and re-run the converter on the
 new `.docx` file.
 
-## 8. What the converter fixes automatically
+## 9. What the converter fixes automatically
 
 - **Headings, bold/italic, lists** are preserved as proper Markdown.
 - **Repeating headers/footers** (running titles, page numbers, etc. that appear on
@@ -198,7 +274,7 @@ new `.docx` file.
 None of this requires any setup — it runs automatically as part of every
 conversion.
 
-## 9. Running the test suite
+## 10. Running the test suite
 
 ```bash
 .\.venv\Scripts\python.exe -m pytest tests\ -v
@@ -206,7 +282,7 @@ conversion.
 
 All tests should pass before you commit changes to the converter logic.
 
-## 10. Folder reference
+## 11. Folder reference
 
 ```
 ripdfdocs2md\
@@ -220,7 +296,7 @@ ripdfdocs2md\
   SETUP.md         this file
 ```
 
-## 11. Troubleshooting
+## 12. Troubleshooting
 
 - **`ripdfdocs2md` command not found in PowerShell`** — always call the full path,
   `.\.venv\Scripts\ripdfdocs2md.exe`, rather than relying on `Activate.ps1` (which
@@ -234,5 +310,5 @@ ripdfdocs2md\
 
 ## Not yet implemented
 
-- Image export to an `_assets\` folder (planned next).
 - Automatic conversion of legacy `.doc` files.
+- Checkbox (☐/☒) recovery from vector-drawn shapes or form-field widgets.
