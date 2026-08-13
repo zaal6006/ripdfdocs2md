@@ -23,13 +23,15 @@ instead of having to guess one from the Markdown text itself.
 
 import re
 
+from .markdown_escape import escape_markdown_cell
+
 OVERLAP_THRESHOLD = 0.5
 
 
 def _clean_cell(value) -> str:
     text = (value or "").strip()
     text = re.sub(r"\s*\n\s*", "<br>", text)
-    return text.replace("|", "\\|")
+    return escape_markdown_cell(text)
 
 
 def _rows_to_markdown(rows: list) -> str:

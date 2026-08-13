@@ -17,6 +17,8 @@ to avoid misfiring on ordinary prose.
 
 import re
 
+from .markdown_escape import escape_markdown_cell
+
 _CELL_SPLIT_CONSERVATIVE = re.compile(r"[ \t]{3,}")
 _CELL_SPLIT_RELAXED = re.compile(r"[ \t]{2,}")
 _SENTENCE_END_RE = re.compile(r"[.!?…]+$")
@@ -165,21 +167,15 @@ def _detect_grid(lines: list):
     return grid if len(grid) >= MIN_ROWS else None
 
 
-def _clean_cell(text: str) -> str:
-    for ch in ("\\", "`", "*", "_", "|"):
-        text = text.replace(ch, "\\" + ch)
-    return text
-
-
 def _grid_to_markdown(grid: list) -> str:
     n_cols = max(len(row) for row in grid)
     rows = [row + [""] * (n_cols - len(row)) for row in grid]
     header, *body = rows
     lines = [
-        "| " + " | ".join(_clean_cell(c) for c in header) + " |",
+        "| " + " | ".join(escape_markdown_cell(c) for c in header) + " |",
         "|" + "|".join(["---"] * n_cols) + "|",
     ]
-    lines.extend("| " + " | ".join(_clean_cell(c) for c in row) + " |" for row in body)
+    lines.extend("| " + " | ".join(escape_markdown_cell(c) for c in row) + " |" for row in body)
     return "\n".join(lines)
 
 

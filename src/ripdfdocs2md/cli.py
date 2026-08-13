@@ -5,7 +5,7 @@ Examples:
     ripdfdocs2md samples/some_file.docx -o output
     ripdfdocs2md samples/                       # convert every PDF/DOCX in a folder
     ripdfdocs2md samples/ -o output
-    ripdfdocs2md samples/ --no-images           # skip extracting embedded images
+    ripdfdocs2md samples/ --images              # also extract embedded images
 """
 
 import argparse
@@ -89,10 +89,10 @@ def main(argv: list[str] | None = None) -> int:
         help="Folder to write .md files into (default: output/).",
     )
     parser.add_argument(
-        "--no-images",
+        "--images",
         action="store_true",
-        help="Skip extracting embedded images (by default, images are saved into a "
-        "<name>_assets/ folder next to each output file and linked from the Markdown).",
+        help="Extract embedded images into a <name>_assets/ folder next to each output "
+        "file, linked from the Markdown (off by default: images are skipped).",
     )
     args = parser.parse_args(argv)
 
@@ -110,7 +110,7 @@ def main(argv: list[str] | None = None) -> int:
         out_path = _build_output_path(input_path, args.output_dir, used_output_paths)
         used_output_paths.add(out_path)
 
-        assets_dir = None if args.no_images else out_path.with_name(_assets_dir_name(out_path.stem))
+        assets_dir = out_path.with_name(_assets_dir_name(out_path.stem)) if args.images else None
 
         print(f"Converting {input_path.name} -> {out_path}")
         try:

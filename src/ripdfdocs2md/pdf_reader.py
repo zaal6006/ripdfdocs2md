@@ -9,6 +9,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pymupdf4llm
@@ -20,9 +21,10 @@ from .pdf_tables import inject_tables_into_page_text
 from .strikethrough_fix import remove_spurious_strikethrough
 
 
-def convert(pdf_path: Path) -> str:
-    """Convert a single PDF file to a Markdown string."""
-    return pymupdf4llm.to_markdown(str(pdf_path))
+class WorkerError(RuntimeError):
+    """Raised when an isolated worker subprocess (table/checkbox
+    detection) fails, with the worker's actual error message instead of
+    just a bare exit code."""
 
 
 def convert_pages(pdf_path: Path, assets_dir: Path | None = None) -> list[str]:
@@ -41,21 +43,34 @@ def convert_pages(pdf_path: Path, assets_dir: Path | None = None) -> list[str]:
     """
     pdf_abs = str(Path(pdf_path).resolve())
 
-    if assets_dir is None:
-        chunks = pymupdf4llm.to_markdown(pdf_abs, page_chunks=True)
-    else:
-        # pymupdf4llm embeds image links relative to the process's
-        # current directory, no matter what form image_path is given in
-        # — so we point CWD at the output folder for the duration of
-        # this call, and pass just the bare assets-folder name, to get a
-        # link that's correctly relative to where the .md file will live.
-        with _chdir(assets_dir.parent):
-            chunks = pymupdf4llm.to_markdown(
-                pdf_abs, page_chunks=True, write_images=True, image_path=assets_dir.name
-            )
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        # Vector-drawn checkboxes (a small square, optionally with an X
+        # or checkmark inside) are invisible to text extraction — they're
+        # not font glyphs. Burn their state in as real "[ ]"/"[x]" text in
+        # a throwaway copy first, so everything below (headings, tables,
+        # paragraphs) picks it up automatically; see
+        # _pdf_checkbox_worker.py for why this has to happen before
+        # pymupdf4llm ever sees the file, not after.
+        annotated_path = str(Path(tmp_dir) / Path(pdf_abs).name)
+        checkbox_count = _annotate_checkboxes(pdf_abs, annotated_path)
+        source_path = annotated_path if checkbox_count else pdf_abs
 
-    pages_boxes = [chunk.get("page_boxes") or [] for chunk in chunks]
-    pages_tables = _extract_tables(pdf_abs, pages_boxes)
+        if assets_dir is None:
+            chunks = pymupdf4llm.to_markdown(source_path, page_chunks=True)
+        else:
+            # pymupdf4llm embeds image links relative to the process's
+            # current directory, no matter what form image_path is given
+            # in — so we point CWD at the output folder for the duration
+            # of this call, and pass just the bare assets-folder name, to
+            # get a link that's correctly relative to where the .md file
+            # will live.
+            with _chdir(assets_dir.parent):
+                chunks = pymupdf4llm.to_markdown(
+                    source_path, page_chunks=True, write_images=True, image_path=assets_dir.name
+                )
+
+        pages_boxes = [chunk.get("page_boxes") or [] for chunk in chunks]
+        pages_tables = _extract_tables(source_path, pages_boxes)
 
     pages = [
         inject_tables_into_page_text(chunk["text"], chunk.get("page_boxes"), tables)
@@ -80,6 +95,33 @@ def convert_pages(pdf_path: Path, assets_dir: Path | None = None) -> list[str]:
     return pages
 
 
+def _run_worker(args: list, worker_name: str, **kwargs) -> str:
+    """Run a worker subprocess and return its stdout. subprocess's own
+    CalledProcessError message is just the command line and exit code —
+    genuinely unhelpful for a corrupt/unusual PDF, where the worker's own
+    stderr (a Python traceback) has the real reason. This surfaces that
+    instead, so "ERROR: ..." in the CLI actually means something."""
+    result = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", **kwargs)
+    if result.returncode != 0:
+        last_line = next(
+            (line for line in reversed(result.stderr.splitlines()) if line.strip()),
+            "(no error output)",
+        )
+        raise WorkerError(f"{worker_name} failed: {last_line}")
+    return result.stdout
+
+
+def _annotate_checkboxes(pdf_path: str, output_path: str) -> int:
+    """Run the checkbox-detection worker in its own process (see
+    _pdf_checkbox_worker.py for why) and return how many checkboxes were
+    found and burned into the copy at `output_path`."""
+    stdout = _run_worker(
+        [sys.executable, "-m", "ripdfdocs2md._pdf_checkbox_worker", pdf_path, output_path],
+        "checkbox detection",
+    )
+    return int(stdout.strip())
+
+
 def _remove_dir_if_empty(path: Path) -> None:
     if path.exists() and not any(path.iterdir()):
         path.rmdir()
@@ -102,12 +144,9 @@ def _extract_tables(pdf_path: str, pages_boxes: list) -> list:
     its per-page table list. `pages_boxes` (the layout model's own block
     classifications) is passed in via stdin so the worker can use its
     "table"-classified regions as the primary source of where tables are."""
-    result = subprocess.run(
+    stdout = _run_worker(
         [sys.executable, "-m", "ripdfdocs2md._pdf_table_worker", str(pdf_path)],
+        "table detection",
         input=json.dumps(pages_boxes),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        check=True,
     )
-    return json.loads(result.stdout)
+    return json.loads(stdout)

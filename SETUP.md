@@ -129,9 +129,15 @@ was skipped — useful if you ever call this from a script.
 
 ## 7. Image export
 
-Embedded images are extracted **by default** — no flags needed. Each output file
-gets its own `<name>_assets\` folder next to it, and images are linked into the
-Markdown as relative paths:
+Embedded images are **skipped by default** — the Markdown has just the text
+content, nothing else. Pass `--images` to extract them instead:
+
+```bash
+.\.venv\Scripts\ripdfdocs2md.exe samples -o output --images
+```
+
+With `--images`, each output file gets its own `<name>_assets\` folder next to
+it, and images are linked into the Markdown as relative paths:
 
 ```
 output\
@@ -161,12 +167,11 @@ output\
   contains a space.
 - A document with no images produces no assets folder at all (nothing empty left
   behind).
-
-**To skip image extraction** (faster, text-only output):
-
-```bash
-.\.venv\Scripts\ripdfdocs2md.exe samples -o output --no-images
-```
+- Without `--images`, images aren't embedded some other way either (e.g. inline
+  as base64) — they're dropped entirely, for both PDF and DOCX. mammoth's own
+  default behavior would otherwise inline each DOCX image as a base64 data URI
+  when no image handling is configured; we override that so "off" really means
+  no image content at all, consistent with the PDF path.
 
 ### Checking image extraction worked
 
@@ -191,9 +196,10 @@ Some images are missing or invalid - see above.
 
 "Invalid" means the file exists but its content doesn't match its extension
 (e.g. a truncated or corrupted `.png`) — checked via the file's magic bytes, not
-just whether it's non-empty. A `data:` URI (an image mammoth embedded inline as
-base64 — only happens if you run with `--no-images`) is counted but never
-flagged, since it isn't a file reference at all.
+just whether it's non-empty. A `data:` URI (an image embedded inline as base64,
+which shouldn't normally appear from this tool's own output — see section 7 —
+but could show up in a hand-edited or otherwise-produced file) is counted but
+never flagged, since it isn't a file reference at all.
 
 To actually *see* the images (not just confirm the links resolve), the easiest
 way is a Markdown viewer with a live preview — e.g. in VS Code, open the `.md`
@@ -247,10 +253,6 @@ new `.docx` file.
   - Known limitation: if a single table row is split exactly across a PDF page
     boundary, it comes out as two separate small tables instead of one — no
     data is lost or garbled, it's just presented as two tables rather than one.
-  - Known limitation: checkboxes (☐/☒) in some PDF forms aren't recoverable as
-    text at all — they may be vector-drawn shapes or interactive form-field
-    widgets rather than font characters, which is a separate problem from
-    tables.
   - Known limitation: `find_tables()` occasionally mistakes a decorative
     cover-page graphic (background color blocks, shapes) for a table. We guard
     against this by requiring the candidate to actually overlap real text
@@ -270,6 +272,34 @@ new `.docx` file.
     only (short, and never legitimately mix in emails/numbers) — the same
     kind of fragmentation occasionally leaks into a body-text sentence, and
     those are left as-is rather than risk mangling unrelated text nearby.
+- **Checkboxes** (PDF) — a checkbox drawn as a vector shape (a small square
+  outline, optionally with an X or checkmark inside) is invisible to text
+  extraction entirely — it's not a font character, so it vanishes without a
+  trace by default. We detect these (a checkbox-sized, roughly square cluster
+  of line drawings with a text label immediately beside it — filtered against
+  decorative graphics/icons by requiring the shape to be black/dark-neutral,
+  not bold-styled, and genuinely adjacent to its label) and burn the correct
+  `[ ]` (unchecked) or `[x]` (checked) in as real text at that exact position,
+  in a throwaway copy of the PDF, before conversion — so it shows up
+  automatically, correctly placed next to its label, in a table cell or
+  ordinary paragraph text alike:
+  ```markdown
+  | Policy: [ ] New [x] Revised [ ] Reviewed | ... |
+  ```
+  - Known limitation: this only covers checkboxes drawn as vector shapes.
+    Some PDF forms use dingbat-font glyphs (Wingdings/Wingdings2/Webdings)
+    for checkboxes instead — a completely different mechanism this doesn't
+    yet handle, and PDF interactive form-field checkboxes (AcroForm widgets)
+    aren't handled either, though those are comparatively rare in a plain
+    (non-fillable) PDF export.
+
+- **Not yet handled**: some PDFs use a dingbat font (e.g. Wingdings3) purely for
+  decorative bullet/arrow markers in headings and list items — since those fonts
+  don't have a real Unicode mapping for the glyph, the character that lands in
+  the extracted text is essentially arbitrary (observed: a literal `X` or `tt`
+  where the source PDF shows a small arrow icon), e.g. `###### X **SECTION A**`
+  instead of `###### SECTION A`. This is cosmetic — nothing after the stray
+  character is affected — but it isn't stripped automatically today.
 
 None of this requires any setup — it runs automatically as part of every
 conversion.
@@ -311,4 +341,9 @@ ripdfdocs2md\
 ## Not yet implemented
 
 - Automatic conversion of legacy `.doc` files.
-- Checkbox (☐/☒) recovery from vector-drawn shapes or form-field widgets.
+- Anything involving dingbat/symbol fonts (Wingdings/Wingdings2/Wingdings3/
+  Webdings) that don't have a real Unicode mapping for their glyphs: checkbox
+  recovery for checkboxes drawn this way (vector-drawn checkboxes *are* handled,
+  see section 9), and stripping the stray character a decorative bullet/arrow
+  glyph in one of these fonts leaves behind.
+- Interactive PDF form-field (AcroForm) checkboxes.

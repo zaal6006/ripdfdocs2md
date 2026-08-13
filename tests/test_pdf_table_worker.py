@@ -1,7 +1,29 @@
+import json
+import subprocess
+import sys
+
 import pymupdf
 import pytest
 
-from ripdfdocs2md._pdf_table_worker import extract_tables
+
+def _extract_tables(pdf_path: str, pages_boxes: list) -> list:
+    """Invoke the worker the same way pdf_reader.py actually does: as a
+    genuine subprocess, not an in-process import. This module relies on
+    page.find_tables() being unpatched — importing pymupdf4llm anywhere in
+    this pytest session (e.g. via ripdfdocs2md.pdf_reader, imported by
+    test_pdf_reader.py) monkey-patches that process-wide, so calling the
+    worker's functions directly in-process gives wrong results depending
+    on what other test files happened to run first. A real subprocess
+    can't be contaminated by the parent test process's imports."""
+    result = subprocess.run(
+        [sys.executable, "-m", "ripdfdocs2md._pdf_table_worker", pdf_path],
+        input=json.dumps(pages_boxes),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    return json.loads(result.stdout)
 
 
 def _thin_rect(x0, y0, x1, y1):
@@ -37,7 +59,7 @@ def mixed_table_pdf(tmp_path):
 
 
 def test_reconstructs_per_row_dividers_and_merged_row(mixed_table_pdf):
-    pages = extract_tables(mixed_table_pdf, [[]])
+    pages = _extract_tables(mixed_table_pdf, [[]])
 
     assert len(pages) == 1
     tables = pages[0]
@@ -52,7 +74,7 @@ def test_reconstructs_per_row_dividers_and_merged_row(mixed_table_pdf):
 
 def test_uses_ml_layout_bbox_when_provided(mixed_table_pdf):
     ml_page_boxes = [{"class": "table", "bbox": [100, 100, 400, 220.5]}]
-    pages = extract_tables(mixed_table_pdf, [ml_page_boxes])
+    pages = _extract_tables(mixed_table_pdf, [ml_page_boxes])
 
     assert len(pages[0]) == 1
     rows = pages[0][0]["rows"]
@@ -72,5 +94,5 @@ def no_ruling_lines_pdf(tmp_path):
 
 
 def test_no_tables_found_on_plain_page(no_ruling_lines_pdf):
-    pages = extract_tables(no_ruling_lines_pdf, [[]])
+    pages = _extract_tables(no_ruling_lines_pdf, [[]])
     assert pages == [[]]
