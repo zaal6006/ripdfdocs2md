@@ -3,7 +3,7 @@
 Examples:
     ripdfdocs2md samples/some_file.pdf
     ripdfdocs2md samples/some_file.docx -o output
-    ripdfdocs2md samples/                       # convert every PDF/DOCX in a folder
+    ripdfdocs2md samples/                       # convert every PDF/DOCX/DOC in a folder
     ripdfdocs2md samples/ -o output
     ripdfdocs2md samples/ --images              # also extract embedded images
 """
@@ -15,7 +15,6 @@ from pathlib import Path
 from .console import use_utf8_console
 from .pipeline import SUPPORTED_SUFFIXES, UnsupportedFileError, convert_file
 
-KNOWN_UNSUPPORTED_SUFFIXES = {".doc"}
 _WHITESPACE_RE = re.compile(r"\s+")
 
 
@@ -32,7 +31,7 @@ def _collect_input_files(paths: list[Path]) -> tuple[list[Path], int]:
     """Expand a mix of file paths and folder paths into a flat file list.
 
     Returns (files_to_convert, skipped_count) — skipped_count covers files
-    recognized as unsupported (e.g. .doc) before conversion is even tried.
+    recognized as unsupported before conversion is even tried.
     """
     files: list[Path] = []
     skipped = 0
@@ -40,10 +39,6 @@ def _collect_input_files(paths: list[Path]) -> tuple[list[Path], int]:
         if path.is_dir():
             for suffix in SUPPORTED_SUFFIXES:
                 files.extend(sorted(path.glob(f"*{suffix}")))
-            for suffix in KNOWN_UNSUPPORTED_SUFFIXES:
-                for bad_file in sorted(path.glob(f"*{suffix}")):
-                    print(f"Skipping {bad_file.name}: old .doc format not supported (see README).")
-                    skipped += 1
         elif path.is_file():
             files.append(path)
         else:
@@ -73,13 +68,13 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(
         prog="ripdfdocs2md",
-        description="Convert PDF/DOCX files to Markdown, fully offline.",
+        description="Convert PDF/DOCX/DOC files to Markdown, fully offline.",
     )
     parser.add_argument(
         "inputs",
         nargs="+",
         type=Path,
-        help="One or more PDF/DOCX files, or folders containing them.",
+        help="One or more PDF/DOCX/DOC files, or folders containing them.",
     )
     parser.add_argument(
         "-o",

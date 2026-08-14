@@ -58,7 +58,13 @@ def test_same_stem_different_extension_gets_numeric_suffix(tmp_path):
     assert (out_dir / "report_1.md").exists()
 
 
-def test_doc_file_is_skipped_with_nonzero_exit(tmp_path):
+def test_doc_file_fails_with_nonzero_exit_when_soffice_unavailable(tmp_path, monkeypatch):
+    # Forcing RIPDFDOCS2MD_SOFFICE to a nonexistent path makes this
+    # deterministic regardless of whether the machine running this test
+    # actually has LibreOffice installed (unlike garbage .doc *content*,
+    # which LibreOffice's own format auto-detection can be permissive
+    # enough to still parse as plain text rather than failing).
+    monkeypatch.setenv("RIPDFDOCS2MD_SOFFICE", str(tmp_path / "nonexistent-soffice.exe"))
     input_dir = tmp_path / "input"
     input_dir.mkdir()
     (input_dir / "legacy.doc").write_bytes(b"not a real doc file")

@@ -1,9 +1,9 @@
 # ripdfdocs2md — Setup & Usage Guide
 
-Local, offline PDF/DOCX → Markdown converter. This guide covers installing it from
-scratch, running it on a single file, running it in batch over a folder, and running
-the test suite. No internet access is required at any point after the one-time
-install below — no files are uploaded anywhere.
+Local, offline PDF/DOCX/DOC → Markdown converter. This guide covers installing it
+from scratch, running it on a single file, running it in batch over a folder, and
+running the test suite. No internet access is required at any point after the
+one-time install below — no files are uploaded anywhere.
 
 ## 1. Prerequisites
 
@@ -11,6 +11,9 @@ install below — no files are uploaded anywhere.
 - Python 3.10 or newer ([python.org](https://www.python.org/downloads/) — check
   "Add python.exe to PATH" during install)
 - Git (to clone the repo)
+- **Only if you need to convert old `.doc` files**: LibreOffice (installed, or the
+  no-install "Portable" build) — see section 8 for why and how to set it up. PDF and
+  `.docx` conversion don't need this at all.
 
 Check your Python version:
 
@@ -82,17 +85,21 @@ environment first.
 .\.venv\Scripts\ripdfdocs2md.exe "samples\some_file.pdf" -o output
 ```
 
-This writes `output\some_file.md`. Works the same way for `.docx`:
+This writes `output\some_file.md`. Works the same way for `.docx` and `.doc`:
 
 ```bash
 .\.venv\Scripts\ripdfdocs2md.exe "samples\some_file.docx" -o output
+.\.venv\Scripts\ripdfdocs2md.exe "samples\some_file.doc" -o output
 ```
+
+Converting a `.doc` file needs LibreOffice available — see section 8 if you haven't
+set that up yet.
 
 `-o` / `--output-dir` is optional and defaults to `output\` in the current folder.
 
 ## 6. Convert a whole folder (batch mode)
 
-Point it at a folder instead of a file — every `.pdf` and `.docx` inside is
+Point it at a folder instead of a file — every `.pdf`, `.docx`, and `.doc` inside is
 converted:
 
 ```bash
@@ -206,20 +213,39 @@ way is a Markdown viewer with a live preview — e.g. in VS Code, open the `.md`
 file and press `Ctrl+Shift+V`. Since the file and its `_assets\` folder are
 siblings on disk, any standard viewer resolves the relative links correctly.
 
-## 8. Known limitation: old `.doc` files are not supported
+## 8. `.doc` (old binary Word format) support
 
 `.doc` (Word 97–2003 binary format) is a completely different file format from
 `.docx`, and the library we use to read Word documents (`mammoth`) only understands
-`.docx`. The tool detects `.doc` files and skips them with a clear message rather
-than crashing:
+`.docx`. Instead of asking you to manually re-save every `.doc` file, the tool
+converts it to `.docx` for you first, then runs the normal DOCX pipeline on the
+result — this happens automatically and produces the same quality of Markdown
+(headings, bold/italic, lists, tables) as a native `.docx` file.
 
-```
-Skipping some_file.doc: old .doc format not supported (see README).
+That first conversion step is done by a headless LibreOffice — it isn't
+pip-installable, so it's a separate one-time setup:
+
+**Option A — you (or your IT department) already have LibreOffice installed.**
+Nothing to do; the tool finds it automatically at its usual install location
+(`C:\Program Files\LibreOffice\...`).
+
+**Option B — no install / no admin rights.** Download "LibreOffice Portable" (the
+no-install build) from
+[portableapps.com](https://portableapps.com/apps/office/libreoffice_portable),
+extract it anywhere (e.g. `C:\Tools\LibreOfficePortable`), then tell
+`ripdfdocs2md` where to find it by setting an environment variable pointing at the
+`soffice.exe` inside it:
+
+```powershell
+$env:RIPDFDOCS2MD_SOFFICE = "C:\Tools\LibreOfficePortable\App\libreoffice\program\soffice.exe"
 ```
 
-**Workaround:** open the file in Word (or LibreOffice, if you don't have Word),
-then **File → Save As → Word Document (.docx)**, and re-run the converter on the
-new `.docx` file.
+(Set this permanently via Windows' "Environment Variables" system settings if you
+don't want to re-run that line every new terminal session.)
+
+If neither is set up, converting a `.doc` file fails with a clear `ERROR:` line
+telling you to install LibreOffice or set `RIPDFDOCS2MD_SOFFICE` — PDF and `.docx`
+conversion are completely unaffected either way.
 
 ## 9. What the converter fixes automatically
 
@@ -319,7 +345,7 @@ ripdfdocs2md\
   .venv\           virtual environment (not committed)
   src\ripdfdocs2md\  the actual package/source code
   tests\           automated tests (pytest)
-  samples\         put test PDFs/DOCX here (gitignored — never commit real documents)
+  samples\         put test PDFs/DOCX/DOC here (gitignored — never commit real documents)
   output\          converted .md files land here (gitignored)
   pyproject.toml   project metadata + dependency list
   README.md        short project pitch
@@ -337,10 +363,12 @@ ripdfdocs2md\
 - **A real document contains sensitive/patient information** — never commit it.
   `samples\` and `output\` are already excluded via `.gitignore`, along with any
   loose `*.pdf`/`*.docx` files anywhere in the repo.
+- **`.doc` file fails with "No LibreOffice 'soffice' executable found"** — see
+  section 8; either install LibreOffice or set the `RIPDFDOCS2MD_SOFFICE`
+  environment variable to point at a portable build's `soffice.exe`.
 
 ## Not yet implemented
 
-- Automatic conversion of legacy `.doc` files.
 - Anything involving dingbat/symbol fonts (Wingdings/Wingdings2/Wingdings3/
   Webdings) that don't have a real Unicode mapping for their glyphs: checkbox
   recovery for checkboxes drawn this way (vector-drawn checkboxes *are* handled,

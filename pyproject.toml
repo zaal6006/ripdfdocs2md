@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ripdfdocs2md"
 version = "0.1.0"
-description = "Local, offline PDF/DOCX to Markdown converter for feeding an internal chatbot AI."
+description = "Local, offline PDF/DOCX/DOC to Markdown converter for feeding an internal chatbot AI."
 requires-python = ">=3.10"
 dependencies = [
     "pymupdf4llm>=0.0.17",
